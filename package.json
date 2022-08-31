@@ -1,5 +1,5 @@
 {
-  "name": "@vuemodel/strapi-pinia-orm",
+  "name": "strapi-pinia-orm",
   "version": "0.0.1",
   "description": "Marrying the composition API with Pinia ORM and Strapi",
   "author": "Luke Diebold",
