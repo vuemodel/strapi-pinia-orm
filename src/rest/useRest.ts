@@ -39,6 +39,8 @@ export default function useRest<ResponseData = unknown> (
   const fields = ref(options.fields || [])
   const endpoint = ref(endpointParam)
 
+  const isFetching = ref(false)
+
   const standardErrors = useStandardErrors()
   const validationErrors = useFieldErrors()
 
@@ -52,16 +54,22 @@ export default function useRest<ResponseData = unknown> (
     {
       headers: config.getRequestHeaders ? config.getRequestHeaders() : undefined
     },
+    {
+      immediate: false
+    }
   )
 
   async function execute (action: RequestAction, payload: Record<string, unknown> = {}) {
-    payload.populate = populate.value
-    payload.fields = fields.value
+    payload.populate = payload.populate || populate.value
+    payload.fields = payload.fields || fields.value
+
+    isFetching.value = true
 
     // When the action is a "get" request
     // convert the payload to a query string
     if (action === 'get') {
-      endpoint.value += ('?' + qs.stringify(payload))
+      const queryString = qs.stringify(payload)
+      endpoint.value += queryString ? ('?' + qs.stringify(payload)) : ''
       await fetcher.get().json().execute()
       endpoint.value = unref(endpointParam)
     } else if (payload) {
@@ -69,6 +77,8 @@ export default function useRest<ResponseData = unknown> (
     } else {
       await fetcher[action]().json().execute()
     }
+
+    isFetching.value = false
 
     if (fetcher.error.value) {
       standardErrors.errors.value.push({
@@ -94,7 +104,7 @@ export default function useRest<ResponseData = unknown> (
     validationErrors: validationErrors.errors,
     hasValidationErrors: validationErrors.hasErrors,
     hasErrors,
-    isFetching: fetcher.isFetching,
+    isFetching,
     data: fetcher.data,
     isFinished: fetcher.isFinished,
   }

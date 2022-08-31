@@ -7,13 +7,17 @@ import { StandardErrors } from '../errors/useStandardErrors'
 import { Resource } from '../types/Resource'
 import { LooseModelForm } from '../types/LooseModelForm'
 import { ResourceNode } from '../types/ResourceNode'
+import getConfig from '../plugin/getConfig'
+import { useRepo } from 'pinia-orm'
+import { normalize } from '../utils/normalize'
 
 export type OnCreateCallback<ModelType extends Model> = (model: Resource<ModelType>) => void
 
 export interface CreateResourceOptions<ModelType extends Model> {
-  form?: LooseModelForm<ModelType>
   formDefaults?: () => Record<string, unknown>
   onCreate?: OnCreateCallback<ModelType>
+  notifyOnError?: boolean
+  persist?: boolean
 }
 
 export interface UseCreateResourceReturn<ModelType extends Model> {
@@ -30,26 +34,39 @@ export interface UseCreateResourceReturn<ModelType extends Model> {
   onCreate: (callback: OnCreateCallback<ModelType>) => void,
 }
 
-export default function useCreateResource<ModelType extends Model> (
-  entity: string,
-  options: CreateResourceOptions<ModelType> = {},
-): UseCreateResourceReturn<ModelType> {
-  const formDefaults = ref(options.formDefaults || (() => { return {} }))
-  const resource: Ref<Resource<ModelType> | null> = ref(null)
+const defaultOptions = {
+  notifyOnError: true,
+  persist: true
+}
 
-  const onCreateCallbacks: Ref<OnCreateCallback<ModelType>[]> = ref([])
+export default function useCreateResource<ModelType extends typeof Model> (
+  modelClass: ModelType,
+  options: CreateResourceOptions<InstanceType<ModelType>> = {},
+): UseCreateResourceReturn<InstanceType<ModelType>> {
+  const repo = useRepo(modelClass)
+
+  const entity = modelClass.entity
+  options = Object.assign({}, defaultOptions, options)
+
+  const config = getConfig()
+  const errorNotifer = config.errorNotifiers?.create
+
+  const formDefaults = ref(options.formDefaults || (() => { return {} }))
+  const resource: Ref<Resource<InstanceType<ModelType>> | null> = ref(null)
+
+  const onCreateCallbacks: Ref<OnCreateCallback<InstanceType<ModelType>>[]> = ref([])
 
   if (options.onCreate) {
     onCreateCallbacks.value.push(options.onCreate)
   }
 
-  const onCreate = (callback: OnCreateCallback<ModelType>) => {
+  const onCreate = (callback: OnCreateCallback<InstanceType<ModelType>>) => {
     onCreateCallbacks.value.push(callback)
   }
 
-  const rest = useRest<ResourceNode<ModelType>>(entity)
+  const rest = useRest<ResourceNode<InstanceType<ModelType>>>(entity)
 
-  async function create (form: LooseModelForm<ModelType>) {
+  async function create (form: LooseModelForm<InstanceType<ModelType>>) {
     const mergedForm = deepmerge(form, formDefaults.value())
 
     await rest.execute('post', { data: mergedForm })
@@ -57,6 +74,10 @@ export default function useCreateResource<ModelType extends Model> (
     if (!rest.hasErrors.value && rest.data.value) {
       if (rest.data.value.data) {
         resource.value = rest.data.value.data
+
+        if(options.persist) {
+          repo.save(normalize(resource.value))
+        }
       }
 
       onCreateCallbacks.value.forEach(callback => {
@@ -64,6 +85,8 @@ export default function useCreateResource<ModelType extends Model> (
           callback(resource.value)
         }
       })
+    } else {
+      if(errorNotifer && options.notifyOnError) errorNotifer({ entityType: entity })
     }
   }
 

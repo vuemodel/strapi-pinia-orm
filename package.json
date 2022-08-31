@@ -5,6 +5,7 @@
   "author": "Luke Diebold",
   "repository": "https://github.com/vuemodel/strapi-pinia-orm",
   "license": "MIT",
+  "module": "./dist/tsc/main.js",
   "keywords": [
     "strapi",
     "vue",
@@ -12,13 +13,12 @@
     "pinia-orm",
     "pinia"
   ],
-  "main": "./dist/tsc/main.js",
   "types": "./dist/tsc/main.d.ts",
-  "browser": "./dist/esbuild/browser.js",
   "scripts": {
     "lint": "eslint src/ --ext .js,.jsx,.ts,.tsx",
     "clean": "rm -rf dist build package",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch"
   },
   "devDependencies": {
     "@types/node": "^15.14.9",
@@ -38,8 +38,7 @@
     "lodash-es": "^4.17.21",
     "pinia": "^2.0.21",
     "pinia-orm": "1.0.0-rc.6",
-    "qs": "^6.11.0",
-    "vue-demi": "^0.12.1"
+    "qs": "^6.11.0"
   },
   "peerDependencies": {
     "@vue/composition-api": "^1.0.0",

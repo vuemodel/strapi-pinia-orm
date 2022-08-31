@@ -1,8 +1,8 @@
-import { inject } from "vue-demi"
+import { inject } from "vue"
 import { StrapiProviderConfig } from "../types/StrapiProviderConfig"
 
-export default function getConfig (provider = 'default') {
-  const config = inject<StrapiProviderConfig>(provider)
+export default function getConfig (providerKey = 'default') {
+  const config = inject<StrapiProviderConfig>('strapiPiniaOrmConfig:' + providerKey)
 
   if(!config) {
     throw new Error('Error getting the default strapi config. Did you install the strapi rest plugin?')

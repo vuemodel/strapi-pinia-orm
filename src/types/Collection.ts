@@ -1,4 +1,4 @@
-import { Model } from 'shared/types/Model'
+import { Model } from './Model'
 import { Resource } from './Resource'
 
 export type Collection<ModelType extends Model> = Resource<ModelType>[]

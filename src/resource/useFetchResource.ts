@@ -1,39 +1,60 @@
 import { Ref, ref } from 'vue'
 import useRest from '../rest/useRest'
-import { MaybeRef } from '@vueuse/core'
+import { MaybeComputedRef, MaybeRef, resolveUnref } from '@vueuse/core'
 import { Model } from '../types'
 import { ResourceNode } from '../types/ResourceNode'
 import { Resource } from '../types/Resource'
 import { StrapiPopulate } from '../types/StrapiPopulate'
 import { StrapiFieldsSelect } from '../plugin/StrapiFieldsSelect'
+import getConfig from '../plugin/getConfig'
+import { useRepo } from 'pinia-orm'
+import { normalize } from '../utils/normalize'
 
 export type OnFetchCallback<ModelType extends Model> = (resourceNode: ResourceNode<ModelType>) => void
 
 export interface FetchResourceOptions<ModelType extends Model> {
   id?: MaybeRef<number>
-  populate?: StrapiPopulate<ModelType>
-  fields?: StrapiFieldsSelect<ModelType>
+  populate?: MaybeComputedRef<StrapiPopulate<ModelType>>
+  fields?: MaybeComputedRef<StrapiFieldsSelect<ModelType>>
+  onFetch?: OnFetchCallback<ModelType>
   immediate?: boolean
+  notifyOnError?: boolean
+  persist?: boolean
 }
 
-export default function useFetchResource<ModelType extends Model> (
-  entity: string,
-  options: FetchResourceOptions<ModelType> = {},
-) {
-  const id = ref(options.id || null)
-  const populate = ref(options.populate || [])
-  const fields = ref(options.fields || [])
+const defaultOptions = {
+  persist: true,
+  notifyOnError: true
+}
 
-  const resource: Ref<Resource<ModelType> | null> = ref(null)
+export default function useFetchResource<ModelType extends typeof Model> (
+  modelClass: ModelType,
+  options: FetchResourceOptions<InstanceType<ModelType>> = {},
+) {
+  const repo = useRepo(modelClass)
+
+  const entity = modelClass.entity
+  options = Object.assign({}, defaultOptions, options)
+
+  const config = getConfig()
+  const errorNotifier = config.errorNotifiers?.fetch
+
+  const id = ref(options.id || null)
+
+  const resource: Ref<Resource<InstanceType<ModelType>> | null> = ref(null)
   const endpoint = ref('')
 
-  const onFetchCallbacks = ref<OnFetchCallback<ModelType>[]>([])
+  const onFetchCallbacks = ref<OnFetchCallback<InstanceType<ModelType>>[]>([])
 
-  const onFetch = (callback: OnFetchCallback<ModelType>) => {
+  const onFetch = (callback: OnFetchCallback<InstanceType<ModelType>>) => {
     onFetchCallbacks.value.push(callback)
   }
 
-  const rest = useRest<ResourceNode<ModelType>>(endpoint, { populate, fields })
+  if (options.onFetch) {
+    onFetchCallbacks.value.push(options.onFetch)
+  }
+
+  const rest = useRest<ResourceNode<InstanceType<ModelType>>>(endpoint)
 
   async function fetch (resourceParam?: { id: number, attributes: Record<string, unknown> } | number) {
     let fetchId: number | null
@@ -52,11 +73,18 @@ export default function useFetchResource<ModelType extends Model> (
 
     endpoint.value = `${entity}/${fetchId}`
 
-    await rest.execute('get')
+    await rest.execute('get', {
+      populate: options.populate ? resolveUnref(options.populate) as StrapiPopulate<InstanceType<ModelType>> : undefined,
+      fields: options.fields ? resolveUnref(options.fields) : undefined,
+    })
 
     if (!rest.hasErrors.value) {
       if (rest.data.value?.data) {
         resource.value = rest.data.value.data
+
+        if(options.persist) {
+          repo.save(normalize(resource.value))
+        }
       }
 
       onFetchCallbacks.value.forEach(callback => {
@@ -64,6 +92,8 @@ export default function useFetchResource<ModelType extends Model> (
           callback(rest.data.value)
         }
       })
+    } else {
+      if(errorNotifier) errorNotifier({ entityType: entity })
     }
   }
 

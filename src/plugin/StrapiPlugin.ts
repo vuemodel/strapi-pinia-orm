@@ -1,4 +1,4 @@
-import { App } from 'vue-demi'
+import { App } from 'vue'
 import { StrapiProviderConfig } from '../types/StrapiProviderConfig'
 
 export interface StrapiPluginOptions {

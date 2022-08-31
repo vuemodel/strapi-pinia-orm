@@ -1,4 +1,4 @@
-import { computed, Ref, ref } from 'vue'
+import { computed, ComputedRef, Ref, ref } from 'vue'
 import { MaybeComputedRef, resolveUnref } from '@vueuse/core'
 
 import useRest from '../rest/useRest'
@@ -8,6 +8,11 @@ import { StrapiPopulate } from '../types/StrapiPopulate'
 import { StrapiFieldsSelect } from '../plugin/StrapiFieldsSelect'
 import { StrapiFiltersObject } from '../types/StrapiFilters'
 import { Collection } from '../types/Collection'
+import { FieldErrors } from '../errors/useFieldErrors'
+import { StandardErrors } from '../errors/useStandardErrors'
+import getConfig from '../plugin/getConfig'
+import { useRepo } from 'pinia-orm'
+import { normalize } from '../utils/normalize'
 
 export type OnFetchCallback<ModelType extends Model> = (models: CollectionNode<ModelType>) => void
 
@@ -18,6 +23,9 @@ export interface UseFetchResourcesOptions<ModelType extends Model> {
   filters?: MaybeComputedRef<StrapiFiltersObject<ModelType>>
   onFetch?: OnFetchCallback<ModelType>
   immediate?: boolean
+  notifyOnError?: boolean
+  persist?: boolean
+  persistBy?: 'save' | 'replace'
   pagination?: {
     page?: number
     pageSize?: number
@@ -25,23 +33,27 @@ export interface UseFetchResourcesOptions<ModelType extends Model> {
   }
 }
 
-// export interface UseFetcherResourcesReturn {
-//   fetch
-//   pagination
-//   nextPage
-//   previousPage
-//   isFirstPage
-//   isLastPage
-//   data
-//   fetching
-//   resources
-//   hasErrors
-//   validationErrors
-//   standardErrors
-//   hasValidationErrors
-//   hasStandardErrors
-//   onFetch
-// }
+export interface UseFetcherResourcesReturn<ModelType extends Model> {
+  fetch: () => Promise<void>
+  pagination: Ref<{
+      page?: number | undefined;
+      pageSize?: number | undefined;
+      withCount?: boolean | undefined;
+  }>
+  nextPage: () => Promise<void>
+  previousPage: () => Promise<void>
+  isFirstPage: ComputedRef<boolean | undefined>
+  isLastPage: ComputedRef<boolean | undefined>
+  data: Ref<CollectionNode<ModelType> | null>
+  fetching: Ref<boolean>
+  resources: Ref<Collection<ModelType>>
+  hasErrors: ComputedRef<boolean>
+  validationErrors: Ref<FieldErrors>
+  standardErrors: Ref<StandardErrors<string | number>>
+  hasValidationErrors: ComputedRef<boolean>
+  hasStandardErrors: ComputedRef<boolean>
+  onFetch: (callback: OnFetchCallback<ModelType>) => void
+}
 
 export interface PaginationState {
   page: number
@@ -50,34 +62,45 @@ export interface PaginationState {
   total: number
 }
 
-export default function useFetchResources<ModelType extends Model> (
-  entity: string,
-  options: UseFetchResourcesOptions<ModelType> = {},
-) {
-  const populate = ref(options.populate || [])
-  const immediate = ref(options.immediate || false)
-  const sort = ref(options.sort || [])
-  const pagination = ref(options.pagination || {})
+const defaultOptions = {
+  notifyOnError: true,
+  persist: true,
+  persistBy: 'replace'
+}
 
+export default function useFetchResources<ModelType extends typeof Model> (
+  modelClass: ModelType,
+  options: UseFetchResourcesOptions<InstanceType<ModelType>> = {},
+): UseFetcherResourcesReturn<InstanceType<ModelType>> {
+  const repo = useRepo(modelClass)
+
+  const entity = modelClass.entity
+  options = Object.assign({}, defaultOptions, options)
+
+  const config = getConfig('default')
+  const errorNotifier = config.errorNotifiers?.fetch
+
+  const pagination = ref(options.pagination || {})
   const paginationState: Ref<PaginationState | undefined> = ref()
 
-  const onFetchCallbacks = ref<OnFetchCallback<ModelType>[]>([])
+  const onFetchCallbacks = ref<OnFetchCallback<InstanceType<ModelType>>[]>([])
 
   if (options.onFetch) {
     onFetchCallbacks.value.push(options.onFetch)
   }
 
-  const onFetch = (callback: OnFetchCallback<ModelType>) => {
+  const onFetch = (callback: OnFetchCallback<InstanceType<ModelType>>) => {
     onFetchCallbacks.value.push(callback)
   }
 
-  const resources: Ref<Collection<ModelType>> = ref([])
+  const resources: Ref<Collection<InstanceType<ModelType>>> = ref([])
 
-  const rest = useRest<CollectionNode<ModelType>>(entity, { populate })
+  const rest = useRest<CollectionNode<InstanceType<ModelType>>>(entity)
 
   async function fetch () {
     await rest.execute('get', {
-      filters: options.filters ? resolveUnref(options.filters) as StrapiFiltersObject<ModelType> : undefined,
+      populate: options.populate ? resolveUnref(options.populate) as StrapiPopulate<InstanceType<ModelType>> : undefined,
+      filters: options.filters ? resolveUnref(options.filters) as StrapiFiltersObject<InstanceType<ModelType>> : undefined,
       sort: options.sort ? resolveUnref(options.sort) : undefined,
       fields: options.fields ? resolveUnref(options.fields) : undefined,
       pagination: pagination.value,
@@ -86,6 +109,15 @@ export default function useFetchResources<ModelType extends Model> (
     if (!rest.hasErrors.value) {
       if (rest.data.value?.data) {
         resources.value = rest.data.value.data
+      }
+
+      if(options.persist) {
+        if(options.persistBy === 'replace') {
+          repo.flush()
+          repo.save(normalize(resources.value))
+        } else {
+          repo[options.persistBy || 'save'](normalize(resources.value))
+        }
       }
 
       if (rest.data.value?.meta?.pagination) {
@@ -97,10 +129,12 @@ export default function useFetchResources<ModelType extends Model> (
           callback(rest.data.value)
         }
       })
+    } else {
+      if(errorNotifier) errorNotifier({ entityType: entity })
     }
   }
 
-  if (immediate.value) {
+  if (options.immediate) {
     fetch()
   }
 
