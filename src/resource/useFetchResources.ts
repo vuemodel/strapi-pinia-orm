@@ -25,6 +25,24 @@ export interface UseFetchResourcesOptions<ModelType extends Model> {
   }
 }
 
+// export interface UseFetcherResourcesReturn {
+//   fetch
+//   pagination
+//   nextPage
+//   previousPage
+//   isFirstPage
+//   isLastPage
+//   data
+//   fetching
+//   resources
+//   hasErrors
+//   validationErrors
+//   standardErrors
+//   hasValidationErrors
+//   hasStandardErrors
+//   onFetch
+// }
+
 export interface PaginationState {
   page: number
   pageCount: number
