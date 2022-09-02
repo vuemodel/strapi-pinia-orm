@@ -13,7 +13,7 @@ import { normalize } from '../utils/normalize'
 export type OnFetchCallback<ModelType extends Model> = (resourceNode: ResourceNode<ModelType>) => void
 
 export interface FetchResourceOptions<ModelType extends Model> {
-  id?: MaybeRef<number>
+  id?: MaybeRef<number | undefined>
   populate?: MaybeComputedRef<StrapiPopulate<ModelType>>
   fields?: MaybeComputedRef<StrapiFieldsSelect<ModelType>>
   onFetch?: OnFetchCallback<ModelType>
@@ -39,7 +39,7 @@ export default function useFetchResource<ModelType extends typeof Model> (
   const config = getConfig()
   const errorNotifier = config.errorNotifiers?.fetch
 
-  const id = ref(options.id || null)
+  const idRef = ref(options.id || null)
 
   const resource: Ref<Resource<InstanceType<ModelType>> | null> = ref(null)
   const endpoint = ref('')
@@ -57,14 +57,14 @@ export default function useFetchResource<ModelType extends typeof Model> (
   const rest = useRest<ResourceNode<InstanceType<ModelType>>>(endpoint)
 
   async function fetch (resourceParam?: { id: number, attributes: Record<string, unknown> } | number) {
-    let fetchId: number | null
+    let fetchId: number | undefined
 
     if (typeof resourceParam === 'number') {
       fetchId = resourceParam
     } else if (resourceParam?.id) {
       fetchId = resourceParam?.id
-    } else {
-      fetchId = id.value
+    } else if(typeof idRef.value === 'number') {
+      fetchId = idRef.value
     }
 
     if (!fetchId) {
@@ -97,13 +97,13 @@ export default function useFetchResource<ModelType extends typeof Model> (
     }
   }
 
-  if (options.immediate && id.value) {
-    fetch(id.value)
+  if (options.immediate && idRef.value) {
+    fetch(idRef.value)
   }
 
   return {
     fetch,
-    id,
+    id: idRef,
     data: rest.data,
     fetching: rest.isFetching,
     resource,
