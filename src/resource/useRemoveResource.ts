@@ -92,7 +92,7 @@ export default function useRemoveResource<ModelType extends typeof Model> (
         }
       })
     } else {
-      if(errorNotifier) errorNotifier({ entityType: entity })
+      if(errorNotifier && options.notifyOnError) errorNotifier({ entityType: entity })
     }
   }
 
